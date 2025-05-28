@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estuda-AI: Selecionar Questões</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .question-list-container {
+            max-height: 200px; /* Altura máxima para a lista de questões */
+            overflow-y: auto;  /* Adiciona scroll se a lista for muito longa */
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 15px;
+            text-align: left;
+        }
+        .question-item {
+            padding: 5px 0;
+            border-bottom: 1px dashed #eee;
+        }
+        .question-item:last-child {
+            border-bottom: none;
+        }
+        .answered-question {
+            color: #888;
+            text-decoration: line-through;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Questões Identificadas</h1>
+        <p>Foram identificadas {{ num_disponiveis }} questões disponíveis para resolução (de um total de {{ all_exercicios|length }}).</p>
+
+        {% if error %}
+            <p style="color: red;">{{ error }}</p>
+        {% endif %}
+
+        <div class="question-list-container">
+            <h3>Visão Geral das Questões:</h3>
+            {% if all_exercicios %}
+                <ol>
+                    {% for ex in all_exercicios %}
+                        <li class="question-item {% if ex.respondida %}answered-question{% endif %}">
+                            {{ ex.texto[:80] }}...
+                            {% if ex.respondida %} (Respondida){% endif %}
+                        </li>
+                    {% endfor %}
+                </ol>
+            {% else %}
+                <p>Nenhuma questão identificada.</p>
+            {% endif %}
+        </div>
+
+        <form action="/select_questions" method="post">
+            <div class="form-group" style="margin-top: 30px;">
+                <label for="num_questions">Quantas questões você quer resolver agora?</label>
+                <input type="number" id="num_questions" name="num_questions" min="1" max="{{ num_disponiveis }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>Como você quer que as questões sejam selecionadas?</label>
+                <div class="radio-group">
+                    <input type="radio" id="sequential" name="selection_mode" value="sequential" required>
+                    <label for="sequential">Em ordem (as primeiras disponíveis)</label><br>
+
+                    <input type="radio" id="random" name="selection_mode" value="random">
+                    <label for="random">Aleatório</label><br>
+                </div>
+            </div>
+
+            <button type="submit">Resolver Questões</button>
+        </form>
+        <a href="{{ url_for('index') }}" class="back-button" style="margin-top: 20px;">Começar Novo Processo</a>
+    </div>
+</body>
+</html>

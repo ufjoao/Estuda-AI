@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estuda-AI: Questões Respondidas</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .answered-card {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        .answered-card h2 {
+            color: #4CAF50; /* Green for answered */
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        .answered-card p {
+            color: #555;
+        }
+        .nav-buttons {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+        .nav-buttons .button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .nav-buttons .button.secondary {
+            background-color: #6c757d;
+        }
+        .nav-buttons .button:hover {
+            background-color: #0056b3;
+        }
+        .nav-buttons .button.secondary:hover {
+            background-color: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Questões Já Respondidas</h1>
+        {% if answered_list %}
+            {% for ex in answered_list %}
+                <div class="answered-card">
+                    <h2>Questão ID: {{ ex.id + 1 }}</h2> {# +1 para começar do 1 na exibição #}
+                    <p>{{ ex.texto }}</p>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p>Nenhuma questão foi respondida ainda.</p>
+        {% endif %}
+
+        <div class="nav-buttons">
+            <a href="{{ url_for('select_questions') }}" class="button">Voltar para Seleção</a>
+            <a href="{{ url_for('index') }}" class="button secondary">Começar Novo Processo</a>
+        </div>
+    </div>
+</body>
+</html>

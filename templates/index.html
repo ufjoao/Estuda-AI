@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estuda-AI: Upload de PDF</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Bem-vindo ao Estuda-AI !</h1>
+        <p>Faça o upload do seu PDF e nos diga que tipo de documento ele é.</p>
+
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="pdf_file">Escolha seu arquivo PDF:</label>
+                <input type="file" id="pdf_file" name="pdf_file" accept=".pdf" required>
+            </div>
+
+            <div class="form-group">
+                <label>Seu PDF é:</label>
+                <div class="radio-group">
+                    <input type="radio" id="livro" name="pdf_type" value="scanned_book" required>
+                    <label for="livro">Escaneado de livro</label><br>
+
+                    <input type="radio" id="mao" name="pdf_type" value="scanned_handwritten" required>
+                    <label for="mao">Escaneado de escrita a mão</label><br>
+
+                    <input type="radio" id="texto" name="pdf_type" value="text_only" required>
+                    <label for="texto">PDF todo em texto (gerado digitalmente)</label><br>
+
+                    <input type="radio" id="misto" name="pdf_type" value="mixed_content" required>
+                    <label for="misto">PDF com texto, imagens e tabelas</label><br>
+                </div>
+            </div>
+
+            <button type="submit">Processar PDF</button>
+        </form>
+    </div>
+</body>
+</html>

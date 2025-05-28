@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resultados do Estuda-AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .exercise-card {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: left;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+        }
+        .exercise-card h2 {
+            color: #007bff;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        .exercise-card h3 {
+            color: #333;
+            margin-top: 15px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        .exercise-card p {
+            white-space: pre-wrap; /* Preserva quebras de linha e espaços do texto do Gemini */
+        }
+        .similar-exercise {
+            background-color: #e9f7fe;
+            border-left: 3px solid #007bff;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 5px;
+        }
+        .similar-exercise h4 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        .nav-buttons {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 15px; /* Espaço entre os botões */
+        }
+        .nav-buttons .button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .nav-buttons .button.secondary {
+            background-color: #6c757d;
+        }
+        .nav-buttons .button:hover {
+            background-color: #0056b3;
+        }
+        .nav-buttons .button.secondary:hover {
+            background-color: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Resultados da Resolução</h1>
+        {% if results %}
+            {% for item in results %}
+                {% if item.mensagem %}
+                    <p>{{ item.mensagem }}</p>
+                {% else %}
+                    <div class="exercise-card">
+                        <h2>Exercício Original #{{ item.id }}</h2>
+                        <p><strong>Questão:</strong><br>{{ item.original }}</p>
+
+                        <h3>Resolução Detalhada:</h3>
+                        <p>{{ item.resolucao_original }}</p>
+
+                        {% if item.similares %}
+                            <h3>Exercícios Similares:</h3>
+                            {% for similar_ex in item.similares %}
+                                <div class="similar-exercise">
+                                    <h4>Questão Similar:</h4>
+                                    <p>{{ similar_ex.texto }}</p>
+                                    <h4>Resolução da Questão Similar:</h4>
+                                    <p>{{ similar_ex.resolucao }}</p>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <p>Não foi possível gerar exercícios similares.</p>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+            <p><strong>Total de exercícios identificados no PDF:</strong> {{ num_exercicios_total }}</p>
+            <p><strong>Questões ainda disponíveis para resolver:</strong> {{ num_exercicios_disponiveis }}</p>
+            {% if exercicios_respondidos_ids %}
+                <p><strong>Questões já respondidas (IDs):</strong> {{ exercicios_respondidos_ids|join(', ') }}</p>
+            {% endif %}
+        {% else %}
+            <p>Nenhum resultado para exibir.</p>
+        {% endif %}
+
+        <div class="nav-buttons">
+            {% if num_exercicios_disponiveis > 0 %}
+                <a href="{{ url_for('select_questions') }}" class="button">Resolver Mais Questões</a>
+            {% endif %}
+            <a href="{{ url_for('index') }}" class="button secondary">Começar Novo Processo</a>
+            {% if exercicios_respondidos_ids %}
+                <a href="{{ url_for('answered_questions') }}" class="button secondary">Ver Questões Respondidas</a>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

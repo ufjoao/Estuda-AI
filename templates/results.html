@@ -3,120 +3,204 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resultados do Estuda-AI</title>
+    <title>Resultados dos Exercícios</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="[https://cdn.jsdelivr.net/npm/marked/marked.min.js](https://cdn.jsdelivr.net/npm/marked/marked.min.js)"></script>
+
     <style>
-        .exercise-card {
+        .exercise-box {
             background-color: #f9f9f9;
             border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            text-align: left;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.05);
-        }
-        .exercise-card h2 {
-            color: #007bff;
-            margin-top: 0;
-            margin-bottom: 10px;
-        }
-        .exercise-card h3 {
-            color: #333;
-            margin-top: 15px;
-            margin-bottom: 10px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 5px;
-        }
-        .exercise-card p {
-            white-space: pre-wrap; /* Preserva quebras de linha e espaços do texto do Gemini */
-        }
-        .similar-exercise {
-            background-color: #e9f7fe;
-            border-left: 3px solid #007bff;
             padding: 15px;
-            margin-top: 15px;
-            border-radius: 5px;
+            margin-bottom: 20px;
+            border-radius: 8px;
         }
-        .similar-exercise h4 {
+        .exercise-box h3 {
+            color: #333;
             margin-top: 0;
-            color: #0056b3;
         }
-        .nav-buttons {
-            margin-top: 20px;
-            display: flex;
-            justify-content: center;
-            gap: 15px; /* Espaço entre os botões */
+        /* Estilos para o conteúdo Markdown */
+        .resolution-content, .similar-exercise-content {
+            background-color: #eee;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            margin-top: 10px;
         }
-        .nav-buttons .button {
-            display: inline-block;
-            background-color: #007bff;
-            color: white;
-            padding: 10px 15px;
-            border: none;
+        /* Estilos Markdown básicos para dentro das caixas de conteúdo */
+        .resolution-content h1, .resolution-content h2, .resolution-content h3, .resolution-content h4,
+        .similar-exercise-content h1, .similar-exercise-content h2, .similar-exercise-content h3, .similar-exercise-content h4 {
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            color: #2c3e50;
+        }
+        .resolution-content pre, .similar-exercise-content pre {
+            background-color: #f0f0f0;
+            padding: 10px;
             border-radius: 5px;
-            cursor: pointer;
-            text-decoration: none;
+            overflow-x: auto; /* Para rolagem em códigos longos */
         }
-        .nav-buttons .button.secondary {
-            background-color: #6c757d;
+        .resolution-content code, .similar-exercise-content code {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #e0e0e0;
+            padding: 2px 4px;
+            border-radius: 3px;
         }
-        .nav-buttons .button:hover {
-            background-color: #0056b3;
+        .resolution-content ul, .resolution-content ol,
+        .similar-exercise-content ul, .similar-exercise-content ol {
+            margin-left: 20px;
+            margin-bottom: 10px;
         }
-        .nav-buttons .button.secondary:hover {
-            background-color: #5a6268;
+
+        .similar-exercises-container {
+            margin-top: 20px;
+            border-top: 1px dashed #ccc;
+            padding-top: 15px;
+        }
+        .similar-exercises-list {
+            list-style: none;
+            padding: 0;
+        }
+        .similar-exercises-list li {
+            margin-bottom: 10px;
+            background-color: #e6e6e6;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #007bff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: none;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Resultados da Resolução</h1>
+        <h1>Resultados dos Exercícios</h1>
+        <p>Total de exercícios no PDF: {{ num_exercicios_total }}</p>
+        <p>Exercícios ainda não resolvidos: {{ num_exercicios_disponiveis }}</p>
+
+        <a href="{{ url_for('select_questions') }}" class="button">Voltar para Seleção de Questões</a>
+        <a href="{{ url_for('answered_questions') }}" class="button">Ver Questões Respondidas</a>
+        <a href="{{ url_for('index') }}" class="button">Iniciar Nova Sessão</a>
+
+        <hr>
+
         {% if results %}
-            {% for item in results %}
-                {% if item.mensagem %}
-                    <p>{{ item.mensagem }}</p>
-                {% else %}
-                    <div class="exercise-card">
-                        <h2>Exercício Original #{{ item.id }}</h2>
-                        <p><strong>Questão:</strong><br>{{ item.original }}</p>
-
-                        <h3>Resolução Detalhada:</h3>
-                        <p>{{ item.resolucao_original }}</p>
-
-                        {% if item.similares %}
-                            <h3>Exercícios Similares:</h3>
-                            {% for similar_ex in item.similares %}
-                                <div class="similar-exercise">
-                                    <h4>Questão Similar:</h4>
-                                    <p>{{ similar_ex.texto }}</p>
-                                    <h4>Resolução da Questão Similar:</h4>
-                                    <p>{{ similar_ex.resolucao }}</p>
-                                </div>
-                            {% endfor %}
-                        {% else %}
-                            <p>Não foi possível gerar exercícios similares.</p>
-                        {% endif %}
+            <h2>Questões Resolvidas Nesta Sessão:</h2>
+            {% for exercise in results %}
+                <div class="exercise-box" id="exercise-{{ exercise.id }}">
+                    <h3>Questão {{ exercise.id }}:</h3>
+                    <div class="original-question-content">
+                        <p>{{ exercise.original }}</p>
                     </div>
-                {% endif %}
-            {% endfor %}
-            <p><strong>Total de exercícios identificados no PDF:</strong> {{ num_exercicios_total }}</p>
-            <p><strong>Questões ainda disponíveis para resolver:</strong> {{ num_exercicios_disponiveis }}</p>
-            {% if exercicios_respondidos_ids %}
-                <p><strong>Questões já respondidas (IDs):</strong> {{ exercicios_respondidos_ids|join(', ') }}</p>
-            {% endif %}
-        {% else %}
-            <p>Nenhum resultado para exibir.</p>
-        {% endif %}
 
-        <div class="nav-buttons">
-            {% if num_exercicios_disponiveis > 0 %}
-                <a href="{{ url_for('select_questions') }}" class="button">Resolver Mais Questões</a>
-            {% endif %}
-            <a href="{{ url_for('index') }}" class="button secondary">Começar Novo Processo</a>
-            {% if exercicios_respondidos_ids %}
-                <a href="{{ url_for('answered_questions') }}" class="button secondary">Ver Questões Respondidas</a>
-            {% endif %}
-        </div>
+                    <h4>Resolução:</h4>
+                    <div class="resolution-content markdown-content" data-markdown-text="{{ exercise.resolucao_original | e }}">
+                        </div>
+
+                    <div class="similar-exercises-container">
+                        <h4>Exercícios Similares:</h4>
+                        <div id="similares-{{ exercise.id }}">
+                            {% if exercise.similares %}
+                                <ul class="similar-exercises-list">
+                                    {% for similar_ex in exercise.similares %}
+                                        <li>
+                                            <p><strong>Questão:</strong> {{ similar_ex.texto }}</p>
+                                            <p><strong>Resolução:</strong></p>
+                                            <div class="similar-exercise-content markdown-content" data-markdown-text="{{ similar_ex.resolucao | e }}">
+                                                </div>
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p>Nenhum exercício similar gerado ainda.</p>
+                                <button class="button generate-similar-btn" data-exercise-id="{{ exercise.id }}">
+                                    Gerar Exercícios Similares
+                                </button>
+                                <div class="spinner" id="spinner-{{ exercise.id }}"></div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p>Nenhum resultado para exibir nesta sessão.</p>
+        {% endif %}
     </div>
+
+    <script>
+        // Função para renderizar o Markdown
+        function renderMarkdown() {
+            document.querySelectorAll('.markdown-content').forEach(element => {
+                // Obtém o texto Markdown do atributo data-markdown-text
+                // e decodifica entidades HTML que podem ter sido escapadas por | e
+                const markdownText = element.dataset.markdownText;
+                if (markdownText) {
+                    element.innerHTML = marked.parse(markdownText);
+                }
+            });
+        }
+
+        // Renderiza o Markdown inicial ao carregar a página
+        renderMarkdown();
+
+        // Lógica do botão "Gerar Exercícios Similares" (permanece a mesma, mas agora renderiza Markdown)
+        document.querySelectorAll('.generate-similar-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const exerciseId = this.dataset.exerciseId;
+                const similarContainer = document.getElementById(`similares-${exerciseId}`);
+                const spinner = document.getElementById(`spinner-${exerciseId}`);
+                
+                this.style.display = 'none';
+                spinner.style.display = 'inline-block';
+
+                fetch(`/generate_similar/${exerciseId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    spinner.style.display = 'none';
+                    if (data.status === 'success') {
+                        let htmlContent = '<ul class="similar-exercises-list">';
+                        data.similares.forEach(similarEx => {
+                            // Renderiza o Markdown para cada exercício similar
+                            const renderedSimilarResolution = marked.parse(similarEx.resolucao);
+                            htmlContent += `
+                                <li>
+                                    <p><strong>Questão:</strong> ${similarEx.texto}</p>
+                                    <p><strong>Resolução:</strong></p>
+                                    <div class="similar-exercise-content markdown-content">
+                                        ${renderedSimilarResolution}
+                                    </div>
+                                </li>
+                            `;
+                        });
+                        htmlContent += '</ul>';
+                        similarContainer.innerHTML = htmlContent;
+                    } else {
+                        similarContainer.innerHTML = `<p style="color: red;">Erro ao gerar similares: ${data.message}</p>`;
+                    }
+                })
+                .catch(error => {
+                    spinner.style.display = 'none';
+                    console.error('Erro na requisição:', error);
+                    similarContainer.innerHTML = '<p style="color: red;">Ocorreu um erro ao conectar com o servidor para gerar similares.</p>';
+                });
+            });
+        });
+    </script>
 </body>
 </html>

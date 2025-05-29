@@ -1,18 +1,24 @@
 import os
-import random # Novo import para a seleção aleatória
-import json # Novo import para lidar com dados JSON na sessão
-from flask import Flask, render_template, request, redirect, url_for, session # Importar 'session'
+import random
+import json
+from flask import Flask, render_template, request, redirect, url_for, session
 import google.generativeai as genai
 from dotenv import load_dotenv
 import PyPDF2
 import pdfplumber
+import uuid
 
 app = Flask(__name__)
-# !!! IMPORTANTE: Use uma chave secreta forte e única em produção !!!
 app.config['SECRET_KEY'] = 'uma_chave_secreta_muito_segura_e_aleatoria_aqui_para_a_sua_aplicacao'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 ALLOWED_EXTENSIONS = {'pdf'}
+
+session_data_store = {} # Dicionário global para armazenar dados da sessão no servidor
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -95,9 +101,13 @@ def parsear_exercicios_do_gemini(texto_gemini):
 def resolver_exercicio_com_gemini(exercicio_texto, model_gemini):
     prompt_resolucao = f"""
     Resolva o seguinte exercício e explique cada passo detalhadamente, como se estivesse ensinando alguém.
-    Mantenha a resposta clara e focada apenas na resolução e explicação:
+    Mantenha a resposta clara e focada apenas na resolução e explicação.
+    **Por favor, formate sua resposta usando Markdown**, incluindo cabeçalhos, listas, negrito, itálico e blocos de código para fórmulas ou cálculos, quando apropriado.
 
+    Exercício:
+    ---
     {exercicio_texto}
+    ---
 
     Certifique-se de mostrar todos os cálculos e a lógica por trás de cada etapa.
     """
@@ -113,7 +123,7 @@ def gerar_exercicios_similares_com_gemini(exercicio_original, resolucao_original
     Com base no seguinte exercício e sua resolução, crie {quantidade} novos exercícios que abordem o mesmo conceito
     ou tipo de problema, mas com valores, cenários ou dados diferentes.
     Não inclua as soluções para os novos exercícios.
-    Apresente cada novo exercício como uma lista numerada clara.
+    **Por favor, apresente cada novo exercício como uma lista numerada, formatado em Markdown, com negrito ou itálico para destacar termos importantes.**
 
     Exercício Original:
     ---
@@ -125,9 +135,9 @@ def gerar_exercicios_similares_com_gemini(exercicio_original, resolucao_original
     {resolucao_original}
     ---
 
-    Por favor, formate os novos exercícios da seguinte forma:
-    1. [Texto do Exercício Similar 1]
-    2. [Texto do Exercício Similar 2]
+    Por favor, formate os novos exercícios da seguinte forma em Markdown:
+    1. [Texto do Exercício Similar 1, com Markdown]
+    2. [Texto do Exercício Similar 2, com Markdown]
     ...
     """
     try:
@@ -141,62 +151,82 @@ def gerar_exercicios_similares_com_gemini(exercicio_original, resolucao_original
 
 @app.route('/')
 def index():
-    # Limpa a sessão ao iniciar uma nova interação
+    if 'session_id' in session and session['session_id'] in session_data_store:
+        del session_data_store[session['session_id']]
     session.clear()
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'pdf_file' not in request.files:
+        print("DEBUG: 'pdf_file' não encontrado no request.files.")
         return redirect(request.url)
 
     file = request.files['pdf_file']
     file_type = request.form.get('pdf_type')
 
     if file.filename == '':
-        return redirect(request.url)
+        print("DEBUG: Nome do arquivo vazio.")
+        return render_template('error.html', message="Nenhum arquivo PDF selecionado.")
 
-    if file and allowed_file(file.filename):
-        filename = file.filename
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+    if not file or not allowed_file(file.filename):
+        print(f"DEBUG: Arquivo não permitido ou ausente. Nome: {file.filename}, Permitido: {allowed_file(file.filename)}")
+        return render_template('error.html', message="Tipo de arquivo não permitido (apenas PDFs) ou arquivo ausente.")
 
-        texto_do_pdf = ""
-        if file_type == 'text_only':
-            texto_do_pdf = extrair_texto_pypdf2(filepath)
-        elif file_type == 'mixed_content':
-            texto_do_pdf = extrair_texto_pdfplumber(filepath)
-        elif file_type == 'scanned_book' or file_type == 'scanned_handwritten':
-            texto_do_pdf = extrair_texto_ocr(filepath) # Ainda é um placeholder
+    filename = file.filename
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+    print(f"DEBUG: Arquivo salvo em: {filepath}")
 
-        if not texto_do_pdf or texto_do_pdf.strip() == "Texto não extraído: OCR não implementado.":
-            return render_template('error.html', message="Erro ao extrair texto do PDF ou tipo de PDF não suportado ainda para OCR.")
+    texto_do_pdf = ""
+    if file_type == 'text_only':
+        print(f"DEBUG: Tentando extrair com PyPDF2 para '{filepath}'")
+        texto_do_pdf = extrair_texto_pypdf2(filepath)
+    elif file_type == 'mixed_content':
+        print(f"DEBUG: Tentando extrair com pdfplumber para '{filepath}'")
+        texto_do_pdf = extrair_texto_pdfplumber(filepath)
+    elif file_type == 'scanned_book' or file_type == 'scanned_handwritten':
+        print(f"DEBUG: Tentando extrair com OCR (placeholder) para '{filepath}'")
+        texto_do_pdf = extrair_texto_ocr(filepath)
 
-        # O Gemini identifica TODAS as questões aqui, sem resolver ainda
-        texto_exercicios_do_gemini = identificar_exercicios_com_gemini(texto_do_pdf, model)
-        exercicios_identificados = parsear_exercicios_do_gemini(texto_exercicios_do_gemini)
+    print(f"DEBUG: Tipo de PDF selecionado: {file_type}")
+    print(f"DEBUG: Texto do PDF (primeiros 200 chars): {texto_do_pdf[:200] if texto_do_pdf else 'Nenhum texto extraído'}")
 
-        if not exercicios_identificados:
-            return render_template('error.html', message="O Gemini não conseguiu identificar nenhuma questão no PDF.")
+    if not texto_do_pdf or texto_do_pdf.strip() == "Texto não extraído: OCR não implementado.":
+        print(f"DEBUG: Condição de erro de extração ativada. Texto extraído: {texto_do_pdf}")
+        return render_template('error.html', message="Erro ao extrair texto do PDF ou tipo de PDF não suportado ainda para OCR.")
 
-        # Armazena todas as questões identificadas na sessão
-        # Precisamos de um formato que possa ser serializado em JSON
-        # Armazenamos como { 'id': index, 'texto': texto_questao, 'respondida': False }
-        session['all_exercicios'] = [{'id': i, 'texto': ex, 'respondida': False} for i, ex in enumerate(exercicios_identificados)]
-        session['exercicios_respondidos_ids'] = [] # Lista para controle de IDs respondidos
+    texto_exercicios_do_gemini = identificar_exercicios_com_gemini(texto_do_pdf, model)
+    exercicios_identificados = parsear_exercicios_do_gemini(texto_exercicios_do_gemini)
 
-        # Redireciona para a página de seleção de questões
-        return redirect(url_for('select_questions'))
-    else:
-        return render_template('error.html', message="Tipo de arquivo não permitido ou arquivo ausente.")
+    if not exercicios_identificados:
+        print("DEBUG: Gemini não identificou questões.")
+        return render_template('error.html', message="O Gemini não conseguiu identificar nenhuma questão no PDF.")
+
+    current_session_id = str(uuid.uuid4())
+    session['session_id'] = current_session_id
+
+    session_data_store[current_session_id] = {
+        'all_exercicios': [{'id': i, 'texto': ex, 'respondida': False, 'resolucao': None, 'similares': []} for i, ex in enumerate(exercicios_identificados)], # NOVO: Adiciona campos para resolucao e similares aqui
+        'exercicios_respondidos_ids': []
+    }
+    print(f"DEBUG: Dados da sessão armazenados em session_data_store[{current_session_id}]")
+
+    print("DEBUG: Redirecionando para select_questions.")
+    return redirect(url_for('select_questions'))
 
 
 @app.route('/select_questions', methods=['GET', 'POST'])
 def select_questions():
-    if 'all_exercicios' not in session:
-        return redirect(url_for('index')) # Redireciona se não houver exercícios na sessão
+    current_session_id = session.get('session_id')
+    if not current_session_id or current_session_id not in session_data_store:
+        print("DEBUG: select_questions - ID de sessão não encontrado ou inválido. Redirecionando para index.")
+        return redirect(url_for('index'))
 
-    all_exercicios = session['all_exercicios']
+    session_data = session_data_store[current_session_id]
+    all_exercicios = session_data['all_exercicios']
+    exercicios_respondidos_ids = session_data['exercicios_respondidos_ids']
+
     num_total_exercicios = len(all_exercicios)
     exercicios_disponiveis = [ex for ex in all_exercicios if not ex['respondida']]
     num_disponiveis = len(exercicios_disponiveis)
@@ -205,11 +235,14 @@ def select_questions():
         num_questions_str = request.form.get('num_questions')
         selection_mode = request.form.get('selection_mode')
 
+        print(f"DEBUG: select_questions - POST recebido. Questões a resolver: {num_questions_str}, Modo: {selection_mode}")
+
         try:
             num_questions_to_resolve = int(num_questions_str)
             if not (1 <= num_questions_to_resolve <= num_disponiveis):
                 raise ValueError("Número de questões inválido.")
         except ValueError:
+            print(f"DEBUG: select_questions - Valor de questões inválido: {num_questions_str}")
             return render_template('select_questions.html',
                                    all_exercicios=all_exercicios,
                                    num_disponiveis=num_disponiveis,
@@ -217,70 +250,134 @@ def select_questions():
 
         exercicios_para_resolver_agora = []
         if selection_mode == 'sequential':
-            # Seleciona as primeiras 'num_questions_to_resolve' questões não respondidas
             for ex in all_exercicios:
                 if not ex['respondida'] and len(exercicios_para_resolver_agora) < num_questions_to_resolve:
                     exercicios_para_resolver_agora.append(ex)
         elif selection_mode == 'random':
-            # Seleciona aleatoriamente 'num_questions_to_resolve' questões não respondidas
             exercicios_para_resolver_agora = random.sample(exercicios_disponiveis, num_questions_to_resolve)
 
-        # Atualiza o status de 'respondida' e a lista de IDs respondidos na sessão
-        ids_para_marcar_como_respondidas = [ex['id'] for ex in exercicios_para_resolver_agora]
-        for ex in all_exercicios:
-            if ex['id'] in ids_para_marcar_como_respondidas:
-                ex['respondida'] = True
-                session['exercicios_respondidos_ids'].append(ex['id'])
+        print(f"DEBUG: select_questions - {len(exercicios_para_resolver_agora)} exercícios selecionados para resolução.")
 
-        session['all_exercicios'] = all_exercicios # Salva o estado atualizado
-        session['exercicios_respondidos_ids'] = list(set(session['exercicios_respondidos_ids'])) # Remove duplicatas
-
-        # Processa apenas as questões selecionadas
         resultados_atuais = []
-        for exercicio_info in exercicios_para_resolver_agora:
+        for i, exercicio_info in enumerate(exercicios_para_resolver_agora):
+            print(f"DEBUG: select_questions - Iniciando processamento do exercício {i+1}/{num_questions_to_resolve} (ID: {exercicio_info['id']}).")
             exercicio_original = exercicio_info['texto']
-            resolucao_original = resolver_exercicio_com_gemini(exercicio_original, model)
 
-            exercicios_similares_raw = gerar_exercicios_similares_com_gemini(exercicio_original, resolucao_original, model, quantidade=2)
-            exercicios_similares_parsed = parsear_exercicios_do_gemini(exercicios_similares_raw)
+            # NOVO: Verifica se a resolução já existe para evitar chamadas duplicadas
+            if exercicio_info['resolucao'] is None:
+                print(f"DEBUG: select_questions - Chamando Gemini para resolver o exercício original (ID: {exercicio_info['id']}).")
+                resolucao_original = resolver_exercicio_com_gemini(exercicio_original, model)
+                exercicio_info['resolucao'] = resolucao_original # Salva a resolução no objeto do exercício
+                print(f"DEBUG: select_questions - Resolução original do exercício (ID: {exercicio_info['id']}) concluída.")
+            else:
+                resolucao_original = exercicio_info['resolucao']
+                print(f"DEBUG: select_questions - Resolução do exercício (ID: {exercicio_info['id']}) já existente.")
 
-            resultados_similares = []
-            for similar_ex in exercicios_similares_parsed:
-                resolucao_similar = resolver_exercicio_com_gemini(similar_ex, model)
-                resultados_similares.append({
-                    'texto': similar_ex,
-                    'resolucao': resolucao_similar
-                })
+
+            # NOVO: Removendo a geração de exercícios similares AUTOMATICAMENTE
+            # exercicios_similares_raw = gerar_exercicios_similares_com_gemini(exercicio_original, resolucao_original, model, quantidade=2)
+            # exercicios_similares_parsed = parsear_exercicios_do_gemini(exercicios_similares_raw)
+            # print(f"DEBUG: select_questions - Geração de similares para o exercício (ID: {exercicio_info['id']}) concluída. Encontrados {len(exercicios_similares_parsed)} similares.")
+
+            # resultados_similares = []
+            # for j, similar_ex in enumerate(exercicios_similares_parsed):
+            #     print(f"DEBUG: select_questions - Chamando Gemini para resolver o exercício similar {j+1} do original (ID: {exercicio_info['id']}).")
+            #     resolucao_similar = resolver_exercicio_com_gemini(similar_ex, model)
+            #     print(f"DEBUG: select_questions - Resolução do similar {j+1} concluída.")
+            #     resultados_similares.append({
+            #         'texto': similar_ex,
+            #         'resolucao': resolucao_similar
+            #     })
+            # exercicio_info['similares'] = resultados_similares # Salva os similares no objeto do exercício
+
+            # Marcar o exercício como respondido e adicionar ao controle de IDs
+            if not exercicio_info['respondida']:
+                exercicio_info['respondida'] = True
+                exercicios_respondidos_ids.append(exercicio_info['id'])
 
             resultados_atuais.append({
-                'id': exercicio_info['id'] + 1, # ID + 1 para começar do 1 na exibição
+                'id': exercicio_info['id'] + 1,
                 'original': exercicio_original,
                 'resolucao_original': resolucao_original,
-                'similares': resultados_similares
+                'similares': exercicio_info['similares'] # Agora virá vazio, ou preenchido sob demanda futura
             })
+        
+        print(f"DEBUG: select_questions - Todas as {len(resultados_atuais)} resoluções concluídas. Renderizando results.html.")
+        
+        # Garante que as atualizações sejam salvas de volta no dicionário global (aponta para o mesmo objeto, mas explicitando)
+        session_data_store[current_session_id]['all_exercicios'] = all_exercicios
+        session_data_store[current_session_id]['exercicios_respondidos_ids'] = list(set(exercicios_respondidos_ids))
 
-        # Redireciona para a página de resultados com as questões resolvidas AGORA
+
         return render_template('results.html',
                                results=resultados_atuais,
                                num_exercicios_total=num_total_exercicios,
                                num_exercicios_disponiveis=len([ex for ex in all_exercicios if not ex['respondida']]),
-                               exercicios_respondidos_ids=session['exercicios_respondidos_ids'])
+                               exercicios_respondidos_ids=session_data_store[current_session_id]['exercicios_respondidos_ids'])
 
+    print("DEBUG: select_questions - Método GET. Renderizando select_questions.html.")
     return render_template('select_questions.html',
                            all_exercicios=all_exercicios,
                            num_disponiveis=num_disponiveis)
 
 
-# Nova rota para exibir exercícios já respondidos (opcional, para visualização do progresso)
-@app.route('/answered_questions')
-def answered_questions():
-    if 'all_exercicios' not in session or 'exercicios_respondidos_ids' not in session:
+# --- Rota para gerar exercícios similares sob demanda ---
+@app.route('/generate_similar/<int:exercise_id>', methods=['POST'])
+def generate_similar(exercise_id):
+    current_session_id = session.get('session_id')
+    if not current_session_id or current_session_id not in session_data_store:
         return redirect(url_for('index'))
 
-    all_exercicios = session['all_exercicios']
-    answered_ids = session['exercicios_respondidos_ids']
+    session_data = session_data_store[current_session_id]
+    all_exercicios = session_data['all_exercicios']
 
-    answered_list = [ex for ex in all_exercicios if ex['id'] in answered_ids]
+    # Encontra o exercício pelo ID (lembre-se que o ID no session_data_store começa do 0)
+    exercicio_info = next((ex for ex in all_exercicios if ex['id'] == exercise_id - 1), None)
+
+    if exercicio_info and exercicio_info['resolucao']:
+        print(f"DEBUG: Gerando similares para o exercício ID {exercise_id}")
+        exercicios_similares_raw = gerar_exercicios_similares_com_gemini(exercicio_info['texto'], exercicio_info['resolucao'], model, quantidade=2)
+        exercicios_similares_parsed = parsear_exercicios_do_gemini(exercicios_similares_raw)
+
+        resultados_similares = []
+        for j, similar_ex in enumerate(exercicios_similares_parsed):
+            print(f"DEBUG: Chamando Gemini para resolver o exercício similar {j+1} do original (ID: {exercise_id}).")
+            resolucao_similar = resolver_exercicio_com_gemini(similar_ex, model)
+            resultados_similares.append({
+                'texto': similar_ex,
+                'resolucao': resolucao_similar
+            })
+        
+        exercicio_info['similares'] = resultados_similares # Armazena os similares no objeto do exercício
+
+        # Como os dados do exercício_info estão sendo atualizados, o session_data_store
+        # já refletirá as mudanças (pois é um dicionário e objetos são passados por referência)
+        # return redirect(url_for('results')) # Talvez redirecionar para a página de resultados ou uma visualização específica
+        # Por enquanto, vamos retornar um JSON simples, mas a UX aqui precisará de mais atenção no front-end.
+        return json.dumps({
+            'status': 'success',
+            'exercise_id': exercise_id,
+            'similares': resultados_similares
+        }), 200, {'Content-Type': 'application/json'}
+    else:
+        print(f"DEBUG: Falha ao gerar similares para o exercício ID {exercise_id}. Resolução não encontrada.")
+        return json.dumps({
+            'status': 'error',
+            'message': 'Exercício ou resolução não encontrada para gerar similares.'
+        }), 400, {'Content-Type': 'application/json'}
+
+
+@app.route('/answered_questions')
+def answered_questions():
+    current_session_id = session.get('session_id')
+    if not current_session_id or current_session_id not in session_data_store:
+        return redirect(url_for('index'))
+
+    session_data = session_data_store[current_session_id]
+    all_exercicios = session_data['all_exercicios']
+    exercicios_respondidos_ids = session_data['exercicios_respondidos_ids']
+
+    answered_list = [ex for ex in all_exercicios if ex['id'] in exercicios_respondidos_ids]
 
     return render_template('answered_questions.html', answered_list=answered_list)
 
